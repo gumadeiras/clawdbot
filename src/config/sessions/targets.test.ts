@@ -3,7 +3,71 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { withTempHome } from "../../../test/helpers/temp-home.js";
 import type { OpenClawConfig } from "../config.js";
-import { resolveAllAgentSessionStoreTargets } from "./targets.js";
+import { resolveAllAgentSessionStoreTargets, resolveSessionStoreTargets } from "./targets.js";
+
+describe("resolveSessionStoreTargets", () => {
+  it("resolves all configured agent stores", () => {
+    const cfg: OpenClawConfig = {
+      session: {
+        store: "~/.openclaw/agents/{agentId}/sessions/sessions.json",
+      },
+      agents: {
+        list: [{ id: "main", default: true }, { id: "work" }],
+      },
+    };
+
+    const targets = resolveSessionStoreTargets(cfg, { allAgents: true });
+
+    expect(targets).toEqual([
+      {
+        agentId: "main",
+        storePath: path.resolve(
+          path.join(process.env.HOME ?? "", ".openclaw/agents/main/sessions/sessions.json"),
+        ),
+      },
+      {
+        agentId: "work",
+        storePath: path.resolve(
+          path.join(process.env.HOME ?? "", ".openclaw/agents/work/sessions/sessions.json"),
+        ),
+      },
+    ]);
+  });
+
+  it("dedupes shared store paths for --all-agents", () => {
+    const cfg: OpenClawConfig = {
+      session: {
+        store: "/tmp/shared-sessions.json",
+      },
+      agents: {
+        list: [{ id: "main", default: true }, { id: "work" }],
+      },
+    };
+
+    expect(resolveSessionStoreTargets(cfg, { allAgents: true })).toEqual([
+      { agentId: "main", storePath: path.resolve("/tmp/shared-sessions.json") },
+    ]);
+  });
+
+  it("rejects unknown agent ids", () => {
+    const cfg: OpenClawConfig = {
+      agents: {
+        list: [{ id: "main", default: true }, { id: "work" }],
+      },
+    };
+
+    expect(() => resolveSessionStoreTargets(cfg, { agent: "ghost" })).toThrow(/Unknown agent id/);
+  });
+
+  it("rejects conflicting selectors", () => {
+    expect(() => resolveSessionStoreTargets({}, { agent: "main", allAgents: true })).toThrow(
+      /cannot be used together/i,
+    );
+    expect(() =>
+      resolveSessionStoreTargets({}, { store: "/tmp/sessions.json", allAgents: true }),
+    ).toThrow(/cannot be combined/i);
+  });
+});
 
 describe("resolveAllAgentSessionStoreTargets", () => {
   it("includes discovered on-disk agent stores alongside configured targets", async () => {
