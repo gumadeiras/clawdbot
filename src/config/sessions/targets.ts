@@ -60,6 +60,7 @@ function shouldSkipDiscoveredAgentDirName(dirName: string, agentId: string): boo
 function resolveValidatedDiscoveredStorePathSync(params: {
   sessionsDir: string;
   agentsRoot: string;
+  realAgentsRoot?: string;
 }): string | undefined {
   const storePath = path.join(params.sessionsDir, "sessions.json");
   try {
@@ -68,7 +69,7 @@ function resolveValidatedDiscoveredStorePathSync(params: {
       return undefined;
     }
     const realStorePath = fsSync.realpathSync(storePath);
-    const realAgentsRoot = fsSync.realpathSync(params.agentsRoot);
+    const realAgentsRoot = params.realAgentsRoot ?? fsSync.realpathSync(params.agentsRoot);
     return isWithinRoot(realStorePath, realAgentsRoot) ? realStorePath : undefined;
   } catch (err) {
     if (shouldSkipDiscoveryError(err)) {
@@ -81,6 +82,7 @@ function resolveValidatedDiscoveredStorePathSync(params: {
 async function resolveValidatedDiscoveredStorePath(params: {
   sessionsDir: string;
   agentsRoot: string;
+  realAgentsRoot?: string;
 }): Promise<string | undefined> {
   const storePath = path.join(params.sessionsDir, "sessions.json");
   try {
@@ -88,10 +90,8 @@ async function resolveValidatedDiscoveredStorePath(params: {
     if (stat.isSymbolicLink() || !stat.isFile()) {
       return undefined;
     }
-    const [realStorePath, realAgentsRoot] = await Promise.all([
-      fs.realpath(storePath),
-      fs.realpath(params.agentsRoot),
-    ]);
+    const realStorePath = await fs.realpath(storePath);
+    const realAgentsRoot = params.realAgentsRoot ?? (await fs.realpath(params.agentsRoot));
     return isWithinRoot(realStorePath, realAgentsRoot) ? realStorePath : undefined;
   } catch (err) {
     if (shouldSkipDiscoveryError(err)) {
@@ -146,23 +146,50 @@ export function resolveAllAgentSessionStoreTargetsSync(
 ): SessionStoreTarget[] {
   const env = params.env ?? process.env;
   const { configuredTargets, agentsRoots } = resolveSessionStoreDiscoveryState(cfg, env);
+  const realAgentsRoots = new Map<string, string>();
+  const getRealAgentsRoot = (agentsRoot: string): string | undefined => {
+    const cached = realAgentsRoots.get(agentsRoot);
+    if (cached !== undefined) {
+      return cached;
+    }
+    try {
+      const realAgentsRoot = fsSync.realpathSync(agentsRoot);
+      realAgentsRoots.set(agentsRoot, realAgentsRoot);
+      return realAgentsRoot;
+    } catch (err) {
+      if (shouldSkipDiscoveryError(err)) {
+        return undefined;
+      }
+      throw err;
+    }
+  };
   const validatedConfiguredTargets = configuredTargets.flatMap((target) => {
     const agentsRoot = resolveAgentsDirFromSessionStorePath(target.storePath);
     if (!agentsRoot) {
       return [target];
     }
+    const realAgentsRoot = getRealAgentsRoot(agentsRoot);
+    if (!realAgentsRoot) {
+      return [];
+    }
     const validatedStorePath = resolveValidatedDiscoveredStorePathSync({
       sessionsDir: path.dirname(target.storePath),
       agentsRoot,
+      realAgentsRoot,
     });
     return validatedStorePath ? [{ ...target, storePath: validatedStorePath }] : [];
   });
   const discoveredTargets = agentsRoots.flatMap((agentsDir) => {
     try {
+      const realAgentsRoot = getRealAgentsRoot(agentsDir);
+      if (!realAgentsRoot) {
+        return [];
+      }
       return resolveAgentSessionDirsFromAgentsDirSync(agentsDir).flatMap((sessionsDir) => {
         const validatedStorePath = resolveValidatedDiscoveredStorePathSync({
           sessionsDir,
           agentsRoot: agentsDir,
+          realAgentsRoot,
         });
         const target = validatedStorePath
           ? toDiscoveredSessionStoreTarget(sessionsDir, validatedStorePath)
@@ -185,6 +212,23 @@ export async function resolveAllAgentSessionStoreTargets(
 ): Promise<SessionStoreTarget[]> {
   const env = params.env ?? process.env;
   const { configuredTargets, agentsRoots } = resolveSessionStoreDiscoveryState(cfg, env);
+  const realAgentsRoots = new Map<string, string>();
+  const getRealAgentsRoot = async (agentsRoot: string): Promise<string | undefined> => {
+    const cached = realAgentsRoots.get(agentsRoot);
+    if (cached !== undefined) {
+      return cached;
+    }
+    try {
+      const realAgentsRoot = await fs.realpath(agentsRoot);
+      realAgentsRoots.set(agentsRoot, realAgentsRoot);
+      return realAgentsRoot;
+    } catch (err) {
+      if (shouldSkipDiscoveryError(err)) {
+        return undefined;
+      }
+      throw err;
+    }
+  };
   const validatedConfiguredTargets = (
     await Promise.all(
       configuredTargets.map(async (target) => {
@@ -192,9 +236,14 @@ export async function resolveAllAgentSessionStoreTargets(
         if (!agentsRoot) {
           return target;
         }
+        const realAgentsRoot = await getRealAgentsRoot(agentsRoot);
+        if (!realAgentsRoot) {
+          return undefined;
+        }
         const validatedStorePath = await resolveValidatedDiscoveredStorePath({
           sessionsDir: path.dirname(target.storePath),
           agentsRoot,
+          realAgentsRoot,
         });
         return validatedStorePath ? { ...target, storePath: validatedStorePath } : undefined;
       }),
@@ -205,6 +254,10 @@ export async function resolveAllAgentSessionStoreTargets(
     await Promise.all(
       agentsRoots.map(async (agentsDir) => {
         try {
+          const realAgentsRoot = await getRealAgentsRoot(agentsDir);
+          if (!realAgentsRoot) {
+            return [];
+          }
           const sessionsDirs = await resolveAgentSessionDirsFromAgentsDir(agentsDir);
           return (
             await Promise.all(
@@ -212,6 +265,7 @@ export async function resolveAllAgentSessionStoreTargets(
                 const validatedStorePath = await resolveValidatedDiscoveredStorePath({
                   sessionsDir,
                   agentsRoot: agentsDir,
+                  realAgentsRoot,
                 });
                 return validatedStorePath
                   ? toDiscoveredSessionStoreTarget(sessionsDir, validatedStorePath)

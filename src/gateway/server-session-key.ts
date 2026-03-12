@@ -2,6 +2,7 @@ import { loadConfig } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { getAgentRunContext, registerAgentRunContext } from "../infra/agent-events.js";
 import { toAgentRequestSessionKey } from "../routing/session-key.js";
+import { resolvePreferredSessionKeyForSessionIdMatches } from "../sessions/session-id-resolution.js";
 import { loadCombinedSessionStoreForGateway } from "./session-utils.js";
 
 const RUN_LOOKUP_CACHE_LIMIT = 256;
@@ -33,41 +34,6 @@ function setResolvedSessionKeyCache(runId: string, sessionKey: string | null): v
   });
 }
 
-function resolvePreferredRunStoreKey(
-  matches: Array<[string, SessionEntry]>,
-  runId: string,
-): string | undefined {
-  if (matches.length === 0) {
-    return undefined;
-  }
-  if (matches.length === 1) {
-    return matches[0][0];
-  }
-
-  const loweredRunId = runId.trim().toLowerCase();
-  const structuralMatches = matches.filter(([storeKey]) => {
-    const requestKey = toAgentRequestSessionKey(storeKey)?.toLowerCase();
-    return (
-      storeKey.toLowerCase().endsWith(`:${loweredRunId}`) ||
-      requestKey === loweredRunId ||
-      requestKey?.endsWith(`:${loweredRunId}`) === true
-    );
-  });
-  if (structuralMatches.length === 1) {
-    return structuralMatches[0][0];
-  }
-
-  const sortedMatches = [...matches].toSorted(
-    (a, b) => (b[1]?.updatedAt ?? 0) - (a[1]?.updatedAt ?? 0),
-  );
-  const [freshest, secondFreshest] = sortedMatches;
-  if ((freshest?.[1]?.updatedAt ?? 0) > (secondFreshest?.[1]?.updatedAt ?? 0)) {
-    return freshest?.[0];
-  }
-
-  return undefined;
-}
-
 export function resolveSessionKeyForRun(runId: string) {
   const cached = getAgentRunContext(runId)?.sessionKey;
   if (cached) {
@@ -88,7 +54,7 @@ export function resolveSessionKeyForRun(runId: string) {
   const matches = Object.entries(store).filter(
     (entry): entry is [string, SessionEntry] => entry[1]?.sessionId === runId,
   );
-  const storeKey = resolvePreferredRunStoreKey(matches, runId);
+  const storeKey = resolvePreferredSessionKeyForSessionIdMatches(matches, runId);
   if (storeKey) {
     const sessionKey = toAgentRequestSessionKey(storeKey) ?? storeKey;
     registerAgentRunContext(runId, { sessionKey });
