@@ -75,4 +75,30 @@ describe("resolveSessionKeyForRun", () => {
     expect(hoisted.loadCombinedSessionStoreForGatewayMock).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
+
+  it("prefers the structurally matching session key when duplicate session ids exist", () => {
+    hoisted.loadConfigMock.mockReturnValue({});
+    hoisted.loadCombinedSessionStoreForGatewayMock.mockReturnValue({
+      storePath: "(multiple)",
+      store: {
+        "agent:main:other": { sessionId: "run-dup", updatedAt: 999 },
+        "agent:retired:acp:run-dup": { sessionId: "run-dup", updatedAt: 100 },
+      },
+    });
+
+    expect(resolveSessionKeyForRun("run-dup")).toBe("acp:run-dup");
+  });
+
+  it("refuses ambiguous duplicate session ids without a clear best match", () => {
+    hoisted.loadConfigMock.mockReturnValue({});
+    hoisted.loadCombinedSessionStoreForGatewayMock.mockReturnValue({
+      storePath: "(multiple)",
+      store: {
+        "agent:main:first": { sessionId: "run-ambiguous", updatedAt: 100 },
+        "agent:retired:second": { sessionId: "run-ambiguous", updatedAt: 100 },
+      },
+    });
+
+    expect(resolveSessionKeyForRun("run-ambiguous")).toBeUndefined();
+  });
 });
