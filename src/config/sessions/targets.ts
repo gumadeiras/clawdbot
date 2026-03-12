@@ -20,6 +20,15 @@ export type SessionStoreTarget = {
   storePath: string;
 };
 
+const NON_FATAL_DISCOVERY_ERROR_CODES = new Set([
+  "EACCES",
+  "ELOOP",
+  "ENOENT",
+  "ENOTDIR",
+  "EPERM",
+  "ESTALE",
+]);
+
 function dedupeTargetsByStorePath(targets: SessionStoreTarget[]): SessionStoreTarget[] {
   const deduped = new Map<string, SessionStoreTarget>();
   for (const target of targets) {
@@ -28,6 +37,11 @@ function dedupeTargetsByStorePath(targets: SessionStoreTarget[]): SessionStoreTa
     }
   }
   return [...deduped.values()];
+}
+
+function shouldSkipDiscoveryError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  return typeof code === "string" && NON_FATAL_DISCOVERY_ERROR_CODES.has(code);
 }
 
 function resolveSessionStoreDiscoveryState(
@@ -71,7 +85,16 @@ export function resolveAllAgentSessionStoreTargetsSync(
   const env = params.env ?? process.env;
   const { configuredTargets, agentsRoots } = resolveSessionStoreDiscoveryState(cfg, env);
   const discoveredTargets = toDiscoveredSessionStoreTargets(
-    agentsRoots.flatMap((agentsDir) => resolveAgentSessionDirsFromAgentsDirSync(agentsDir)),
+    agentsRoots.flatMap((agentsDir) => {
+      try {
+        return resolveAgentSessionDirsFromAgentsDirSync(agentsDir);
+      } catch (err) {
+        if (shouldSkipDiscoveryError(err)) {
+          return [];
+        }
+        throw err;
+      }
+    }),
   );
   return dedupeTargetsByStorePath([...configuredTargets, ...discoveredTargets]);
 }
@@ -84,7 +107,16 @@ export async function resolveAllAgentSessionStoreTargets(
   const { configuredTargets, agentsRoots } = resolveSessionStoreDiscoveryState(cfg, env);
 
   const discoveredDirs = await Promise.all(
-    agentsRoots.map((agentsDir) => resolveAgentSessionDirsFromAgentsDir(agentsDir)),
+    agentsRoots.map(async (agentsDir) => {
+      try {
+        return await resolveAgentSessionDirsFromAgentsDir(agentsDir);
+      } catch (err) {
+        if (shouldSkipDiscoveryError(err)) {
+          return [];
+        }
+        throw err;
+      }
+    }),
   );
   const discoveredTargets = toDiscoveredSessionStoreTargets(discoveredDirs.flat());
   return dedupeTargetsByStorePath([...configuredTargets, ...discoveredTargets]);

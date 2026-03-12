@@ -4,7 +4,14 @@ import { toAgentRequestSessionKey } from "../routing/session-key.js";
 import { loadCombinedSessionStoreForGateway } from "./session-utils.js";
 
 const RUN_LOOKUP_CACHE_LIMIT = 256;
-const resolvedSessionKeyByRunId = new Map<string, string | null>();
+const RUN_LOOKUP_MISS_TTL_MS = 1_000;
+
+type RunLookupCacheEntry = {
+  sessionKey: string | null;
+  expiresAt: number | null;
+};
+
+const resolvedSessionKeyByRunId = new Map<string, RunLookupCacheEntry>();
 
 function setResolvedSessionKeyCache(runId: string, sessionKey: string | null): void {
   if (!runId) {
@@ -19,7 +26,10 @@ function setResolvedSessionKeyCache(runId: string, sessionKey: string | null): v
       resolvedSessionKeyByRunId.delete(oldest);
     }
   }
-  resolvedSessionKeyByRunId.set(runId, sessionKey);
+  resolvedSessionKeyByRunId.set(runId, {
+    sessionKey,
+    expiresAt: sessionKey === null ? Date.now() + RUN_LOOKUP_MISS_TTL_MS : null,
+  });
 }
 
 export function resolveSessionKeyForRun(runId: string) {
@@ -29,7 +39,13 @@ export function resolveSessionKeyForRun(runId: string) {
   }
   const cachedLookup = resolvedSessionKeyByRunId.get(runId);
   if (cachedLookup !== undefined) {
-    return cachedLookup ?? undefined;
+    if (cachedLookup.sessionKey !== null) {
+      return cachedLookup.sessionKey;
+    }
+    if ((cachedLookup.expiresAt ?? 0) > Date.now()) {
+      return undefined;
+    }
+    resolvedSessionKeyByRunId.delete(runId);
   }
   const cfg = loadConfig();
   const { store } = loadCombinedSessionStoreForGateway(cfg);

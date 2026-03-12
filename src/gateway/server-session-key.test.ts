@@ -56,7 +56,9 @@ describe("resolveSessionKeyForRun", () => {
     expect(hoisted.loadCombinedSessionStoreForGatewayMock).toHaveBeenCalledWith(cfg);
   });
 
-  it("caches misses so repeated lookups do not rebuild the combined store", () => {
+  it("caches misses briefly before re-checking the combined store", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-12T15:00:00Z"));
     hoisted.loadConfigMock.mockReturnValue({});
     hoisted.loadCombinedSessionStoreForGatewayMock.mockReturnValue({
       storePath: "(multiple)",
@@ -66,5 +68,11 @@ describe("resolveSessionKeyForRun", () => {
     expect(resolveSessionKeyForRun("missing-run")).toBeUndefined();
     expect(resolveSessionKeyForRun("missing-run")).toBeUndefined();
     expect(hoisted.loadCombinedSessionStoreForGatewayMock).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1_001);
+
+    expect(resolveSessionKeyForRun("missing-run")).toBeUndefined();
+    expect(hoisted.loadCombinedSessionStoreForGatewayMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 });
