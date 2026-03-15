@@ -132,13 +132,19 @@ describe("watch-node script", () => {
       }),
     });
     const childC = Object.assign(new EventEmitter(), {
+      kill: vi.fn(function () {
+        queueMicrotask(() => childC.emit("exit", 0, null));
+      }),
+    });
+    const childD = Object.assign(new EventEmitter(), {
       kill: vi.fn(() => {}),
     });
     const spawn = vi
       .fn()
       .mockReturnValueOnce(childA)
       .mockReturnValueOnce(childB)
-      .mockReturnValueOnce(childC);
+      .mockReturnValueOnce(childC)
+      .mockReturnValueOnce(childD);
     const watcher = Object.assign(new EventEmitter(), {
       close: vi.fn(async () => {}),
     });
@@ -177,10 +183,15 @@ describe("watch-node script", () => {
     expect(childA.kill).toHaveBeenCalledWith("SIGTERM");
     expect(spawn).toHaveBeenCalledTimes(2);
 
-    watcher.emit("change", "src/infra/watch-node.ts");
+    watcher.emit("change", "extensions/voice-call/package.json");
     await new Promise((resolve) => setImmediate(resolve));
     expect(childB.kill).toHaveBeenCalledWith("SIGTERM");
     expect(spawn).toHaveBeenCalledTimes(3);
+
+    watcher.emit("change", "src/infra/watch-node.ts");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(childC.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(spawn).toHaveBeenCalledTimes(4);
 
     fakeProcess.emit("SIGINT");
     const exitCode = await runPromise;

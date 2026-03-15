@@ -220,7 +220,7 @@ describe("run-node script", () => {
     });
   });
 
-  it("rebuilds when extension package metadata is newer than the build stamp", async () => {
+  it("skips rebuilding when extension package metadata is newer than the build stamp", async () => {
     await withTempDir(async (tmp) => {
       const packagePath = path.join(tmp, "extensions", "demo", "package.json");
       const distEntryPath = path.join(tmp, "dist", "entry.js");
@@ -273,10 +273,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([
-        expectedBuildSpawn(),
-        [process.execPath, "openclaw.mjs", "status"],
-      ]);
+      expect(spawnCalls).toEqual([[process.execPath, "openclaw.mjs", "status"]]);
     });
   });
 
@@ -343,7 +340,7 @@ describe("run-node script", () => {
     });
   });
 
-  it("rebuilds for dirty extension manifests consumed by the build graph", async () => {
+  it("skips rebuilding for dirty extension manifests that only affect runtime reload", async () => {
     await withTempDir(async (tmp) => {
       const srcPath = path.join(tmp, "src", "index.ts");
       const manifestPath = path.join(tmp, "extensions", "demo", "openclaw.plugin.json");
@@ -402,10 +399,7 @@ describe("run-node script", () => {
       });
 
       expect(exitCode).toBe(0);
-      expect(spawnCalls).toEqual([
-        expectedBuildSpawn(),
-        [process.execPath, "openclaw.mjs", "status"],
-      ]);
+      expect(spawnCalls).toEqual([[process.execPath, "openclaw.mjs", "status"]]);
     });
   });
 

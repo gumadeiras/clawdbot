@@ -4,7 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import chokidar from "chokidar";
-import { isBuildRelevantRunNodePath, runNodeWatchedPaths } from "./run-node.mjs";
+import { isRestartRelevantRunNodePath, runNodeWatchedPaths } from "./run-node.mjs";
 
 const WATCH_NODE_RUNNER = "scripts/run-node.mjs";
 const WATCH_RESTART_SIGNAL = "SIGTERM";
@@ -25,7 +25,7 @@ const resolveRepoPath = (filePath, cwd) => {
 };
 
 const isIgnoredWatchPath = (filePath, cwd) =>
-  !isBuildRelevantRunNodePath(resolveRepoPath(filePath, cwd));
+  !isRestartRelevantRunNodePath(resolveRepoPath(filePath, cwd));
 
 export async function runWatchMain(params = {}) {
   const deps = {

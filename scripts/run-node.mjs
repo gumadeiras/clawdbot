@@ -12,7 +12,7 @@ const runNodeSourceRoots = ["src", "extensions"];
 const runNodeConfigFiles = ["tsconfig.json", "package.json", "tsdown.config.ts"];
 export const runNodeWatchedPaths = [...runNodeSourceRoots, ...runNodeConfigFiles];
 const extensionSourceFilePattern = /\.(?:[cm]?[jt]sx?)$/;
-const extensionBuildMetadataFiles = new Set(["openclaw.plugin.json", "package.json"]);
+const extensionRestartMetadataFiles = new Set(["openclaw.plugin.json", "package.json"]);
 
 const normalizePath = (filePath) => String(filePath ?? "").replaceAll("\\", "/");
 
@@ -25,11 +25,8 @@ const isIgnoredSourcePath = (relativePath) => {
   );
 };
 
-const isBuildRelevantExtensionPath = (relativePath) => {
+const isBuildRelevantSourcePath = (relativePath) => {
   const normalizedPath = normalizePath(relativePath);
-  if (extensionBuildMetadataFiles.has(path.posix.basename(normalizedPath))) {
-    return true;
-  }
   return extensionSourceFilePattern.test(normalizedPath) && !isIgnoredSourcePath(normalizedPath);
 };
 
@@ -42,7 +39,29 @@ export const isBuildRelevantRunNodePath = (repoPath) => {
     return !isIgnoredSourcePath(normalizedPath.slice("src/".length));
   }
   if (normalizedPath.startsWith("extensions/")) {
-    return isBuildRelevantExtensionPath(normalizedPath.slice("extensions/".length));
+    return isBuildRelevantSourcePath(normalizedPath.slice("extensions/".length));
+  }
+  return false;
+};
+
+const isRestartRelevantExtensionPath = (relativePath) => {
+  const normalizedPath = normalizePath(relativePath);
+  if (extensionRestartMetadataFiles.has(path.posix.basename(normalizedPath))) {
+    return true;
+  }
+  return isBuildRelevantSourcePath(normalizedPath);
+};
+
+export const isRestartRelevantRunNodePath = (repoPath) => {
+  const normalizedPath = normalizePath(repoPath).replace(/^\.\/+/, "");
+  if (runNodeConfigFiles.includes(normalizedPath)) {
+    return true;
+  }
+  if (normalizedPath.startsWith("src/")) {
+    return !isIgnoredSourcePath(normalizedPath.slice("src/".length));
+  }
+  if (normalizedPath.startsWith("extensions/")) {
+    return isRestartRelevantExtensionPath(normalizedPath.slice("extensions/".length));
   }
   return false;
 };
