@@ -44,6 +44,8 @@ describe("watch-node script", () => {
       { ignoreInitial: boolean; ignored: (watchPath: string) => boolean },
     ];
     expect(watchPaths).toEqual(runNodeWatchedPaths);
+    expect(watchPaths).toContain("extensions");
+    expect(watchPaths).toContain("tsdown.config.ts");
     expect(watchOptions.ignoreInitial).toBe(true);
     expect(watchOptions.ignored("src/infra/watch-node.test.ts")).toBe(true);
     expect(watchOptions.ignored("src/infra/watch-node.test.tsx")).toBe(true);

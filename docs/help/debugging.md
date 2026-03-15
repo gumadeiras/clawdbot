@@ -40,7 +40,7 @@ pnpm gateway:watch
 This maps to:
 
 ```bash
-node --watch-path src --watch-path tsconfig.json --watch-path package.json --watch-preserve-output scripts/run-node.mjs gateway --force
+node --watch-path src --watch-path extensions --watch-path tsconfig.json --watch-path package.json --watch-path tsdown.config.ts --watch-preserve-output scripts/run-node.mjs gateway --force
 ```
 
 Add any gateway CLI flags after `gateway:watch` and they will be passed through
