@@ -486,7 +486,7 @@ export async function finalizeSetupWizard(
   if (webSearchProvider) {
     const { SEARCH_PROVIDER_OPTIONS, resolveExistingKey, hasExistingKey, hasKeyInEnv } =
       await import("../commands/onboard-search.js");
-    const entry = SEARCH_PROVIDER_OPTIONS.find((e) => e.value === webSearchProvider);
+    const entry = SEARCH_PROVIDER_OPTIONS.find((e) => e.id === webSearchProvider);
     const label = entry?.label ?? webSearchProvider;
     const storedKey = resolveExistingKey(nextConfig, webSearchProvider);
     const keyConfigured = hasExistingKey(nextConfig, webSearchProvider);
@@ -497,7 +497,7 @@ export async function finalizeSetupWizard(
       : keyConfigured
         ? "API key: configured via secret reference."
         : envAvailable
-          ? `API key: provided via ${entry?.envKeys.join(" / ")} env var.`
+          ? `API key: provided via ${entry?.envVars.join(" / ")} env var.`
           : undefined;
     if (webSearchEnabled !== false && hasKey) {
       await prompter.note(
@@ -539,7 +539,7 @@ export async function finalizeSetupWizard(
     const { SEARCH_PROVIDER_OPTIONS, hasExistingKey, hasKeyInEnv } =
       await import("../commands/onboard-search.js");
     const legacyDetected = SEARCH_PROVIDER_OPTIONS.find(
-      (e) => hasExistingKey(nextConfig, e.value) || hasKeyInEnv(e),
+      (e) => hasExistingKey(nextConfig, e.id) || hasKeyInEnv(e),
     );
     if (legacyDetected) {
       await prompter.note(

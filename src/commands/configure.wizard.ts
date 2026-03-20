@@ -171,16 +171,17 @@ async function promptWebToolsConfig(
     resolveExistingKey,
     hasExistingKey,
     applySearchKey,
+    applySearchProviderSelection,
     hasKeyInEnv,
   } = await import("./onboard-search.js");
-  type SP = (typeof SEARCH_PROVIDER_OPTIONS)[number]["value"];
-  const defaultProvider = SEARCH_PROVIDER_OPTIONS[0]?.value;
+  type SP = (typeof SEARCH_PROVIDER_OPTIONS)[number]["id"];
+  const defaultProvider = SEARCH_PROVIDER_OPTIONS[0]?.id;
   if (!defaultProvider) {
     throw new Error("No web search providers are registered.");
   }
 
   const hasKeyForProvider = (provider: string): boolean => {
-    const entry = SEARCH_PROVIDER_OPTIONS.find((e) => e.value === provider);
+    const entry = SEARCH_PROVIDER_OPTIONS.find((e) => e.id === provider);
     if (!entry) {
       return false;
     }
@@ -189,12 +190,10 @@ async function promptWebToolsConfig(
 
   const existingProvider: SP = (() => {
     const stored = existingSearch?.provider;
-    if (stored && SEARCH_PROVIDER_OPTIONS.some((e) => e.value === stored)) {
+    if (stored && SEARCH_PROVIDER_OPTIONS.some((e) => e.id === stored)) {
       return stored;
     }
-    return (
-      SEARCH_PROVIDER_OPTIONS.find((e) => hasKeyForProvider(e.value))?.value ?? defaultProvider
-    );
+    return SEARCH_PROVIDER_OPTIONS.find((e) => hasKeyForProvider(e.id))?.id ?? defaultProvider;
   })();
 
   note(
@@ -210,7 +209,7 @@ async function promptWebToolsConfig(
     await confirm({
       message: "Enable web_search?",
       initialValue:
-        existingSearch?.enabled ?? SEARCH_PROVIDER_OPTIONS.some((e) => hasKeyForProvider(e.value)),
+        existingSearch?.enabled ?? SEARCH_PROVIDER_OPTIONS.some((e) => hasKeyForProvider(e.id)),
     }),
     runtime,
   );
@@ -219,12 +218,13 @@ async function promptWebToolsConfig(
     ...existingSearch,
     enabled: enableSearch,
   };
+  let workingConfig = nextConfig;
 
   if (enableSearch) {
     const providerOptions = SEARCH_PROVIDER_OPTIONS.map((entry) => {
-      const configured = hasKeyForProvider(entry.value);
+      const configured = hasKeyForProvider(entry.id);
       return {
-        value: entry.value,
+        value: entry.id,
         label: entry.label,
         hint: configured ? `${entry.hint} · configured` : entry.hint,
       };
@@ -241,11 +241,11 @@ async function promptWebToolsConfig(
 
     nextSearch = { ...nextSearch, provider: providerChoice };
 
-    const entry = SEARCH_PROVIDER_OPTIONS.find((e) => e.value === providerChoice)!;
+    const entry = SEARCH_PROVIDER_OPTIONS.find((e) => e.id === providerChoice)!;
     const existingKey = resolveExistingKey(nextConfig, providerChoice);
     const keyConfigured = hasExistingKey(nextConfig, providerChoice);
-    const envAvailable = entry.envKeys.some((k) => Boolean(process.env[k]?.trim()));
-    const envVarNames = entry.envKeys.join(" / ");
+    const envAvailable = entry.envVars.some((k) => Boolean(process.env[k]?.trim()));
+    const envVarNames = entry.envVars.join(" / ");
 
     const keyInput = guardCancel(
       await text({
@@ -263,11 +263,13 @@ async function promptWebToolsConfig(
     const key = String(keyInput ?? "").trim();
 
     if (key || existingKey) {
-      const applied = applySearchKey(nextConfig, providerChoice, (key || existingKey)!);
-      nextSearch = { ...applied.tools?.web?.search };
+      workingConfig = applySearchKey(workingConfig, providerChoice, (key || existingKey)!);
+      nextSearch = { ...workingConfig.tools?.web?.search };
     } else if (keyConfigured || envAvailable) {
-      nextSearch = { ...nextSearch };
+      workingConfig = applySearchProviderSelection(workingConfig, providerChoice);
+      nextSearch = { ...workingConfig.tools?.web?.search };
     } else {
+      nextSearch = { ...nextSearch, provider: providerChoice };
       note(
         [
           "No key stored yet — web_search won't work until a key is available.",
@@ -294,11 +296,11 @@ async function promptWebToolsConfig(
   };
 
   return {
-    ...nextConfig,
+    ...workingConfig,
     tools: {
-      ...nextConfig.tools,
+      ...workingConfig.tools,
       web: {
-        ...nextConfig.tools?.web,
+        ...workingConfig.tools?.web,
         search: nextSearch,
         fetch: nextFetch,
       },

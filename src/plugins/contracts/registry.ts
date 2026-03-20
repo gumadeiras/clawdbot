@@ -79,15 +79,24 @@ type PluginRegistrationContractEntry = {
   toolNames: string[];
 };
 
-const bundledWebSearchPlugins: Array<RegistrablePlugin & { credentialValue: unknown }> = [
-  { ...bravePlugin, credentialValue: "BSA-test" },
-  { ...firecrawlPlugin, credentialValue: "fc-test" },
-  { ...googlePlugin, credentialValue: "AIza-test" },
-  { ...moonshotPlugin, credentialValue: "sk-test" },
-  { ...perplexityPlugin, credentialValue: "pplx-test" },
-  { ...tavilyPlugin, credentialValue: "tvly-test" },
-  { ...xaiPlugin, credentialValue: "xai-test" },
+export const bundledWebSearchPluginRegistrations: Array<{
+  plugin: RegistrablePlugin;
+  credentialValue: unknown;
+}> = [
+  { plugin: bravePlugin, credentialValue: "BSA-test" },
+  { plugin: firecrawlPlugin, credentialValue: "fc-test" },
+  { plugin: googlePlugin, credentialValue: "AIza-test" },
+  { plugin: moonshotPlugin, credentialValue: "sk-test" },
+  { plugin: perplexityPlugin, credentialValue: "pplx-test" },
+  { plugin: tavilyPlugin, credentialValue: "tvly-test" },
+  { plugin: xaiPlugin, credentialValue: "xai-test" },
 ];
+
+const bundledWebSearchPlugins: Array<RegistrablePlugin & { credentialValue: unknown }> =
+  bundledWebSearchPluginRegistrations.map(({ plugin, credentialValue }) => ({
+    ...plugin,
+    credentialValue,
+  }));
 const bundledSpeechPlugins: RegistrablePlugin[] = [elevenLabsPlugin, microsoftPlugin, openAIPlugin];
 
 const bundledMediaUnderstandingPlugins: RegistrablePlugin[] = [
