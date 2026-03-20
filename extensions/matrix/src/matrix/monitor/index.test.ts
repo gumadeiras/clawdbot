@@ -16,6 +16,7 @@ const hoisted = vi.hoisted(() => {
     id: "matrix-client",
     hasPersistedSyncState: vi.fn(() => false),
     stopSyncWithoutPersist: vi.fn(),
+    drainPendingDecryptions: vi.fn(async () => undefined),
   };
   const createMatrixRoomMessageHandler = vi.fn(() => vi.fn());
   const resolveTextChunkLimit = vi.fn<
@@ -236,6 +237,7 @@ describe("monitorMatrixProvider", () => {
     hoisted.stopThreadBindingManager.mockReset();
     hoisted.client.hasPersistedSyncState.mockReset().mockReturnValue(false);
     hoisted.client.stopSyncWithoutPersist.mockReset();
+    hoisted.client.drainPendingDecryptions.mockReset().mockResolvedValue(undefined);
     hoisted.inboundDeduper.claimEvent.mockReset().mockReturnValue(true);
     hoisted.inboundDeduper.commitEvent.mockReset().mockResolvedValue(undefined);
     hoisted.inboundDeduper.releaseEvent.mockReset();
@@ -303,7 +305,7 @@ describe("monitorMatrixProvider", () => {
     );
   });
 
-  it("stops sync before waiting for in-flight handlers, then flushes dedupe before persisting", async () => {
+  it("stops sync, drains decryptions, then waits for in-flight handlers before persisting", async () => {
     const { monitorMatrixProvider } = await import("./index.js");
     const abortController = new AbortController();
     let resolveHandler: (() => void) | null = null;
@@ -321,6 +323,9 @@ describe("monitorMatrixProvider", () => {
     );
     hoisted.client.stopSyncWithoutPersist.mockImplementation(() => {
       hoisted.callOrder.push("pause-client");
+    });
+    hoisted.client.drainPendingDecryptions.mockImplementation(async () => {
+      hoisted.callOrder.push("drain-decrypts");
     });
     hoisted.releaseSharedClientInstance.mockImplementation(async () => {
       hoisted.callOrder.push("release-client");
@@ -354,6 +359,9 @@ describe("monitorMatrixProvider", () => {
     await monitorPromise;
 
     expect(hoisted.callOrder.indexOf("pause-client")).toBeLessThan(
+      hoisted.callOrder.indexOf("drain-decrypts"),
+    );
+    expect(hoisted.callOrder.indexOf("drain-decrypts")).toBeLessThan(
       hoisted.callOrder.indexOf("handler-done"),
     );
     expect(hoisted.callOrder.indexOf("handler-done")).toBeLessThan(

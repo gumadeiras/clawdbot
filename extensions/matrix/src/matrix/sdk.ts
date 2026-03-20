@@ -370,13 +370,17 @@ export class MatrixClient {
       clearInterval(this.idbPersistTimer);
       this.idbPersistTimer = null;
     }
-    this.decryptBridge.stop();
     this.client.stopClient();
     this.started = false;
   }
 
+  async drainPendingDecryptions(reason = "matrix client shutdown"): Promise<void> {
+    await this.decryptBridge.drainPendingDecryptions(reason);
+  }
+
   stop(): void {
     this.stopSyncWithoutPersist();
+    this.decryptBridge.stop();
     // Final persist on shutdown
     this.syncStore?.markCleanShutdown();
     this.stopPersistPromise = Promise.all([

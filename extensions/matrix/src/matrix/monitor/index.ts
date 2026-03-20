@@ -155,6 +155,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     try {
       threadBindingManager?.stop();
       client.stopSyncWithoutPersist();
+      await client.drainPendingDecryptions("matrix monitor shutdown");
       await waitForInFlightRoomMessages();
       await inboundDeduper.stop();
       await releaseSharedClientInstance(client, "persist");
