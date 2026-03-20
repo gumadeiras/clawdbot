@@ -327,6 +327,9 @@ describe("monitorMatrixProvider", () => {
     hoisted.client.drainPendingDecryptions.mockImplementation(async () => {
       hoisted.callOrder.push("drain-decrypts");
     });
+    hoisted.stopThreadBindingManager.mockImplementation(() => {
+      hoisted.callOrder.push("stop-manager");
+    });
     hoisted.releaseSharedClientInstance.mockImplementation(async () => {
       hoisted.callOrder.push("release-client");
       return true;
@@ -365,6 +368,9 @@ describe("monitorMatrixProvider", () => {
       hoisted.callOrder.indexOf("handler-done"),
     );
     expect(hoisted.callOrder.indexOf("handler-done")).toBeLessThan(
+      hoisted.callOrder.indexOf("stop-manager"),
+    );
+    expect(hoisted.callOrder.indexOf("stop-manager")).toBeLessThan(
       hoisted.callOrder.indexOf("stop-deduper"),
     );
     expect(hoisted.callOrder.indexOf("stop-deduper")).toBeLessThan(
