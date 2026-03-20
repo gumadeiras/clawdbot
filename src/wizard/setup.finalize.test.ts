@@ -71,6 +71,7 @@ vi.mock("../commands/health.js", () => ({
 
 vi.mock("../commands/onboard-search.js", () => ({
   SEARCH_PROVIDER_OPTIONS: [],
+  resolveSearchProviderOptions: () => [],
   hasExistingKey: vi.fn(() => false),
   hasKeyInEnv: vi.fn(() => false),
   resolveExistingKey: vi.fn(() => undefined),

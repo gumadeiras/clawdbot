@@ -112,6 +112,17 @@ vi.mock("./onboard-search.js", () => ({
       credentialPath: "plugins.entries.firecrawl.config.webSearch.apiKey",
     },
   ],
+  resolveSearchProviderOptions: () => [
+    {
+      id: "firecrawl",
+      label: "Firecrawl Search",
+      hint: "Structured results with optional result scraping",
+      envVars: ["FIRECRAWL_API_KEY"],
+      placeholder: "fc-...",
+      signupUrl: "https://www.firecrawl.dev/",
+      credentialPath: "plugins.entries.firecrawl.config.webSearch.apiKey",
+    },
+  ],
   resolveExistingKey: mocks.resolveExistingKey,
   hasExistingKey: mocks.hasExistingKey,
   applySearchKey: mocks.applySearchKey,

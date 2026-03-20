@@ -12,7 +12,7 @@ type RegistrablePlugin = {
   register: (api: OpenClawPluginApi) => void;
 };
 
-export const bundledWebSearchPluginRegistrations: Array<{
+export const bundledWebSearchPluginRegistrations: ReadonlyArray<{
   plugin: RegistrablePlugin;
   credentialValue: unknown;
 }> = [
