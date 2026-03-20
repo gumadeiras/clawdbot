@@ -87,7 +87,9 @@ export function applySearchKey(
 ): OpenClawConfig {
   const providerEntry = resolveSearchProviderEntry(provider);
   const search: MutableSearchConfig = { ...config.tools?.web?.search, provider, enabled: true };
-  providerEntry?.setCredentialValue(search, key);
+  if (!providerEntry?.setConfiguredCredentialValue) {
+    providerEntry?.setCredentialValue(search, key);
+  }
   const nextBase: OpenClawConfig = {
     ...config,
     tools: {
@@ -127,12 +129,57 @@ function preserveDisabledState(original: OpenClawConfig, result: OpenClawConfig)
   if (original.tools?.web?.search?.enabled !== false) {
     return result;
   }
-  return {
+
+  const next: OpenClawConfig = {
     ...result,
     tools: {
       ...result.tools,
       web: { ...result.tools?.web, search: { ...result.tools?.web?.search, enabled: false } },
     },
+  };
+
+  const provider = next.tools?.web?.search?.provider;
+  if (typeof provider !== "string") {
+    return next;
+  }
+  const providerEntry = resolveSearchProviderEntry(provider);
+  if (!providerEntry?.pluginId) {
+    return next;
+  }
+
+  const pluginId = providerEntry.pluginId;
+  const originalPluginEntry = (
+    original.plugins?.entries as Record<string, Record<string, unknown>> | undefined
+  )?.[pluginId];
+  const resultPluginEntry = (
+    next.plugins?.entries as Record<string, Record<string, unknown>> | undefined
+  )?.[pluginId];
+
+  const nextPlugins = { ...next.plugins } as Record<string, unknown>;
+
+  if (Array.isArray(original.plugins?.allow)) {
+    nextPlugins.allow = [...original.plugins.allow];
+  } else {
+    delete nextPlugins.allow;
+  }
+
+  if (resultPluginEntry || originalPluginEntry) {
+    const nextEntries = {
+      ...(nextPlugins.entries as Record<string, Record<string, unknown>> | undefined),
+    };
+    const patchedEntry = { ...resultPluginEntry };
+    if (typeof originalPluginEntry?.enabled === "boolean") {
+      patchedEntry.enabled = originalPluginEntry.enabled;
+    } else {
+      delete patchedEntry.enabled;
+    }
+    nextEntries[pluginId] = patchedEntry;
+    nextPlugins.entries = nextEntries;
+  }
+
+  return {
+    ...next,
+    plugins: nextPlugins as OpenClawConfig["plugins"],
   };
 }
 

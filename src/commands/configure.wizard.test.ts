@@ -218,7 +218,6 @@ describe("runConfigureWizard", () => {
             search: {
               provider,
               enabled: true,
-              firecrawl: { apiKey: key },
             },
           },
         },
@@ -259,7 +258,6 @@ describe("runConfigureWizard", () => {
             search: expect.objectContaining({
               provider: "firecrawl",
               enabled: true,
-              firecrawl: expect.objectContaining({ apiKey: "fc-entered-key" }),
             }),
           }),
         }),
