@@ -30,6 +30,7 @@ import type { RuntimeEnv } from "../runtime.js";
 import { restoreTerminalState } from "../terminal/restore.js";
 import { runTui } from "../tui/tui.js";
 import { resolveUserPath } from "../utils.js";
+import { listWebSearchProviders } from "../web-search/runtime.js";
 import type { WizardPrompter } from "./prompts.js";
 import { setupWizardShellCompletion } from "./setup.completion.js";
 import { resolveSetupSecretInputString } from "./setup.secret-input.js";
@@ -483,14 +484,15 @@ export async function finalizeSetupWizard(
 
   const webSearchProvider = nextConfig.tools?.web?.search?.provider;
   const webSearchEnabled = nextConfig.tools?.web?.search?.enabled;
+  const runtimeSearchProviders = listWebSearchProviders({ config: nextConfig });
   if (webSearchProvider) {
-    const { resolveSearchProviderOptions, resolveExistingKey, hasExistingKey, hasKeyInEnv } =
-      await import("../commands/onboard-search.js");
-    const providerOptions = resolveSearchProviderOptions(nextConfig);
-    const entry = providerOptions.find((e) => e.id === webSearchProvider);
+    const { resolveExistingKey, hasExistingKey, hasKeyInEnv } = await import(
+      "../commands/onboard-search.js"
+    );
+    const entry = runtimeSearchProviders.find((e) => e.id === webSearchProvider);
     const label = entry?.label ?? webSearchProvider;
-    const storedKey = resolveExistingKey(nextConfig, webSearchProvider);
-    const keyConfigured = hasExistingKey(nextConfig, webSearchProvider);
+    const storedKey = entry ? resolveExistingKey(nextConfig, webSearchProvider) : undefined;
+    const keyConfigured = entry ? hasExistingKey(nextConfig, webSearchProvider) : false;
     const envAvailable = entry ? hasKeyInEnv(entry) : false;
     const hasKey = keyConfigured || envAvailable;
     const keySource = storedKey
@@ -500,7 +502,18 @@ export async function finalizeSetupWizard(
         : envAvailable
           ? `API key: provided via ${entry?.envVars.join(" / ")} env var.`
           : undefined;
-    if (webSearchEnabled !== false && hasKey) {
+    if (!entry) {
+      await prompter.note(
+        [
+          `Web search provider ${label} is selected but unavailable under the current plugin policy.`,
+          "web_search will not work until the provider is re-enabled or a different provider is selected.",
+          `  ${formatCliCommand("openclaw configure --section web")}`,
+          "",
+          "Docs: https://docs.openclaw.ai/tools/web",
+        ].join("\n"),
+        "Web search",
+      );
+    } else if (webSearchEnabled !== false && hasKey) {
       await prompter.note(
         [
           "Web search is enabled, so your agent can look things up online when needed.",
@@ -537,9 +550,8 @@ export async function finalizeSetupWizard(
   } else {
     // Legacy configs may have a working key (e.g. apiKey or BRAVE_API_KEY) without
     // an explicit provider. Runtime auto-detects these, so avoid saying "skipped".
-    const { resolveSearchProviderOptions, hasExistingKey, hasKeyInEnv } =
-      await import("../commands/onboard-search.js");
-    const legacyDetected = resolveSearchProviderOptions(nextConfig).find(
+    const { hasExistingKey, hasKeyInEnv } = await import("../commands/onboard-search.js");
+    const legacyDetected = runtimeSearchProviders.find(
       (e) => hasExistingKey(nextConfig, e.id) || hasKeyInEnv(e),
     );
     if (legacyDetected) {

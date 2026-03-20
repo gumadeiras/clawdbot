@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   hasExistingKey: vi.fn(),
   hasKeyInEnv: vi.fn(),
   resolveExistingKey: vi.fn(),
+  resolveSearchProviderOptions: vi.fn(),
   readConfigFileSnapshot: vi.fn(),
   writeConfigFile: vi.fn(),
   resolveGatewayPort: vi.fn(),
@@ -101,18 +102,8 @@ vi.mock("./onboard-channels.js", () => ({
 }));
 
 vi.mock("./onboard-search.js", () => ({
+  resolveSearchProviderOptions: mocks.resolveSearchProviderOptions,
   SEARCH_PROVIDER_OPTIONS: [
-    {
-      id: "firecrawl",
-      label: "Firecrawl Search",
-      hint: "Structured results with optional result scraping",
-      envVars: ["FIRECRAWL_API_KEY"],
-      placeholder: "fc-...",
-      signupUrl: "https://www.firecrawl.dev/",
-      credentialPath: "plugins.entries.firecrawl.config.webSearch.apiKey",
-    },
-  ],
-  resolveSearchProviderOptions: () => [
     {
       id: "firecrawl",
       label: "Firecrawl Search",
@@ -140,6 +131,17 @@ describe("runConfigureWizard", () => {
     mocks.resolveExistingKey.mockReturnValue(undefined);
     mocks.hasExistingKey.mockReturnValue(false);
     mocks.hasKeyInEnv.mockReturnValue(false);
+    mocks.resolveSearchProviderOptions.mockReturnValue([
+      {
+        id: "firecrawl",
+        label: "Firecrawl Search",
+        hint: "Structured results with optional result scraping",
+        envVars: ["FIRECRAWL_API_KEY"],
+        placeholder: "fc-...",
+        signupUrl: "https://www.firecrawl.dev/",
+        credentialPath: "plugins.entries.firecrawl.config.webSearch.apiKey",
+      },
+    ]);
     mocks.applySearchKey.mockReset();
     mocks.applySearchProviderSelection.mockReset();
   });
@@ -355,6 +357,56 @@ describe("runConfigureWizard", () => {
           entries: expect.objectContaining({
             firecrawl: expect.objectContaining({
               enabled: true,
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("does not crash when web search providers are unavailable under plugin policy", async () => {
+    mocks.readConfigFileSnapshot.mockResolvedValue({
+      exists: false,
+      valid: true,
+      config: {},
+      issues: [],
+    });
+    mocks.resolveGatewayPort.mockReturnValue(18789);
+    mocks.probeGatewayReachable.mockResolvedValue({ ok: false });
+    mocks.resolveControlUiLinks.mockReturnValue({ wsUrl: "ws://127.0.0.1:18789" });
+    mocks.summarizeExistingConfig.mockReturnValue("");
+    mocks.createClackPrompter.mockReturnValue({});
+    mocks.resolveSearchProviderOptions.mockReturnValue([]);
+
+    const selectQueue = ["local"];
+    const confirmQueue = [true, false];
+    mocks.clackSelect.mockImplementation(async () => selectQueue.shift());
+    mocks.clackConfirm.mockImplementation(async () => confirmQueue.shift());
+    mocks.clackText.mockResolvedValue("");
+    mocks.clackIntro.mockResolvedValue(undefined);
+    mocks.clackOutro.mockResolvedValue(undefined);
+
+    await expect(
+      runConfigureWizard(
+        { command: "configure", sections: ["web"] },
+        {
+          log: vi.fn(),
+          error: vi.fn(),
+          exit: vi.fn(),
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.note).toHaveBeenCalledWith(
+      expect.stringContaining("No web search providers are currently available under this plugin policy."),
+      "Web search",
+    );
+    expect(mocks.writeConfigFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: expect.objectContaining({
+          web: expect.objectContaining({
+            search: expect.objectContaining({
+              enabled: false,
             }),
           }),
         }),

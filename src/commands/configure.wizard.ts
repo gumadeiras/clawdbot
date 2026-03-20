@@ -167,7 +167,6 @@ async function promptWebToolsConfig(
   const existingSearch = nextConfig.tools?.web?.search;
   const existingFetch = nextConfig.tools?.web?.fetch;
   const {
-    SEARCH_PROVIDER_OPTIONS,
     resolveSearchProviderOptions,
     resolveExistingKey,
     hasExistingKey,
@@ -176,11 +175,7 @@ async function promptWebToolsConfig(
     hasKeyInEnv,
   } = await import("./onboard-search.js");
   const searchProviderOptions = resolveSearchProviderOptions(nextConfig);
-  type SP = (typeof SEARCH_PROVIDER_OPTIONS)[number]["id"];
   const defaultProvider = searchProviderOptions[0]?.id;
-  if (!defaultProvider) {
-    throw new Error("No web search providers are registered.");
-  }
 
   const hasKeyForProvider = (provider: string): boolean => {
     const entry = searchProviderOptions.find((e) => e.id === provider);
@@ -190,7 +185,7 @@ async function promptWebToolsConfig(
     return hasExistingKey(nextConfig, provider) || hasKeyInEnv(entry);
   };
 
-  const existingProvider: SP = (() => {
+  const existingProvider = (() => {
     const stored = existingSearch?.provider;
     if (stored && searchProviderOptions.some((e) => e.id === stored)) {
       return stored;

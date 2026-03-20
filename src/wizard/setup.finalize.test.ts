@@ -34,6 +34,10 @@ const readSystemdUserLingerStatus = vi.hoisted(() =>
 const resolveSetupSecretInputString = vi.hoisted(() =>
   vi.fn<() => Promise<string | undefined>>(async () => undefined),
 );
+const resolveExistingKey = vi.hoisted(() => vi.fn(() => undefined));
+const hasExistingKey = vi.hoisted(() => vi.fn(() => false));
+const hasKeyInEnv = vi.hoisted(() => vi.fn(() => false));
+const listWebSearchProviders = vi.hoisted(() => vi.fn(() => []));
 
 vi.mock("../commands/onboard-helpers.js", () => ({
   detectBrowserOpenSupport: vi.fn(async () => ({ ok: false })),
@@ -72,9 +76,13 @@ vi.mock("../commands/health.js", () => ({
 vi.mock("../commands/onboard-search.js", () => ({
   SEARCH_PROVIDER_OPTIONS: [],
   resolveSearchProviderOptions: () => [],
-  hasExistingKey: vi.fn(() => false),
-  hasKeyInEnv: vi.fn(() => false),
-  resolveExistingKey: vi.fn(() => undefined),
+  hasExistingKey,
+  hasKeyInEnv,
+  resolveExistingKey,
+}));
+
+vi.mock("../web-search/runtime.js", () => ({
+  listWebSearchProviders,
 }));
 
 vi.mock("../daemon/service.js", () => ({
@@ -162,6 +170,14 @@ describe("finalizeSetupWizard", () => {
     readSystemdUserLingerStatus.mockResolvedValue({ user: "test-user", linger: "yes" });
     resolveSetupSecretInputString.mockReset();
     resolveSetupSecretInputString.mockResolvedValue(undefined);
+    resolveExistingKey.mockReset();
+    resolveExistingKey.mockReturnValue(undefined);
+    hasExistingKey.mockReset();
+    hasExistingKey.mockReturnValue(false);
+    hasKeyInEnv.mockReset();
+    hasKeyInEnv.mockReturnValue(false);
+    listWebSearchProviders.mockReset();
+    listWebSearchProviders.mockReturnValue([]);
   });
 
   it("resolves gateway password SecretRef for probe and TUI", async () => {
@@ -337,5 +353,101 @@ describe("finalizeSetupWizard", () => {
     expect(gatewayServiceUninstall).not.toHaveBeenCalled();
     expect(progressUpdate).toHaveBeenCalledWith("Restarting Gateway service…");
     expect(progressStop).toHaveBeenCalledWith("Gateway service restart scheduled.");
+  });
+
+  it("reports selected providers blocked by plugin policy as unavailable", async () => {
+    const prompter = buildWizardPrompter({
+      select: vi.fn(async () => "later") as never,
+      confirm: vi.fn(async () => false),
+    });
+
+    await finalizeSetupWizard({
+      flow: "advanced",
+      opts: {
+        acceptRisk: true,
+        authChoice: "skip",
+        installDaemon: false,
+        skipHealth: true,
+        skipUi: true,
+      },
+      baseConfig: {},
+      nextConfig: {
+        tools: {
+          web: {
+            search: {
+              provider: "firecrawl",
+              enabled: true,
+            },
+          },
+        },
+      },
+      workspaceDir: "/tmp",
+      settings: {
+        port: 18789,
+        bind: "loopback",
+        authMode: "token",
+        gatewayToken: undefined,
+        tailscaleMode: "off",
+        tailscaleResetOnExit: false,
+      },
+      prompter,
+      runtime: createRuntime(),
+    });
+
+    expect(prompter.note).toHaveBeenCalledWith(
+      expect.stringContaining("selected but unavailable under the current plugin policy"),
+      "Web search",
+    );
+    expect(resolveExistingKey).not.toHaveBeenCalled();
+    expect(hasExistingKey).not.toHaveBeenCalled();
+  });
+
+  it("only reports legacy auto-detect for runtime-visible providers", async () => {
+    listWebSearchProviders.mockReturnValue([
+      {
+        id: "perplexity",
+        label: "Perplexity Search",
+        hint: "Fast web answers",
+        envVars: ["PERPLEXITY_API_KEY"],
+        placeholder: "pplx-...",
+        signupUrl: "https://www.perplexity.ai/",
+        credentialPath: "plugins.entries.perplexity.config.webSearch.apiKey",
+      },
+    ]);
+    hasExistingKey.mockImplementation((_config, provider) => provider === "perplexity");
+
+    const prompter = buildWizardPrompter({
+      select: vi.fn(async () => "later") as never,
+      confirm: vi.fn(async () => false),
+    });
+
+    await finalizeSetupWizard({
+      flow: "advanced",
+      opts: {
+        acceptRisk: true,
+        authChoice: "skip",
+        installDaemon: false,
+        skipHealth: true,
+        skipUi: true,
+      },
+      baseConfig: {},
+      nextConfig: {},
+      workspaceDir: "/tmp",
+      settings: {
+        port: 18789,
+        bind: "loopback",
+        authMode: "token",
+        gatewayToken: undefined,
+        tailscaleMode: "off",
+        tailscaleResetOnExit: false,
+      },
+      prompter,
+      runtime: createRuntime(),
+    });
+
+    expect(prompter.note).toHaveBeenCalledWith(
+      expect.stringContaining("Web search is available via Perplexity Search (auto-detected)."),
+      "Web search",
+    );
   });
 });
