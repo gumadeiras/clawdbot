@@ -837,6 +837,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       });
       const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, route.agentId);
       let finalReplyDeliveryFailed = false;
+      let nonFinalReplyDeliveryFailed = false;
       const { onModelSelected, ...prefixOptions } = createReplyPrefixOptions({
         cfg,
         agentId: route.agentId,
@@ -887,6 +888,8 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           onError: (err: unknown, info: { kind: "tool" | "block" | "final" }) => {
             if (info.kind === "final") {
               finalReplyDeliveryFailed = true;
+            } else {
+              nonFinalReplyDeliveryFailed = true;
             }
             runtime.error?.(`matrix ${info.kind} reply failed: ${String(err)}`);
           },
@@ -919,6 +922,12 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       if (finalReplyDeliveryFailed) {
         logVerboseMessage(
           `matrix: final reply delivery failed room=${roomId} id=${messageId}; leaving event uncommitted`,
+        );
+        return;
+      }
+      if (!queuedFinal && nonFinalReplyDeliveryFailed) {
+        logVerboseMessage(
+          `matrix: non-final reply delivery failed room=${roomId} id=${messageId}; leaving event uncommitted`,
         );
         return;
       }
