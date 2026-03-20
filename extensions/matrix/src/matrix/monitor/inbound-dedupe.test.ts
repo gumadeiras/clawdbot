@@ -97,4 +97,50 @@ describe("Matrix inbound event dedupe", () => {
     expect(deduper.claimEvent({ roomId: "!room:example.org", eventId: "$keep-2" })).toBe(false);
     expect(deduper.claimEvent({ roomId: "!room:example.org", eventId: "$keep-3" })).toBe(false);
   });
+
+  it("retains replayed backlog events based on processing time", async () => {
+    const storagePath = createStoragePath();
+    let now = 100;
+    const first = await createMatrixInboundEventDeduper({
+      auth: auth as never,
+      storagePath,
+      ttlMs: 20,
+      nowMs: () => now,
+    });
+
+    expect(first.claimEvent({ roomId: "!room:example.org", eventId: "$backlog" })).toBe(true);
+    await first.commitEvent({
+      roomId: "!room:example.org",
+      eventId: "$backlog",
+    });
+    await first.stop();
+
+    now = 110;
+    const second = await createMatrixInboundEventDeduper({
+      auth: auth as never,
+      storagePath,
+      ttlMs: 20,
+      nowMs: () => now,
+    });
+    expect(second.claimEvent({ roomId: "!room:example.org", eventId: "$backlog" })).toBe(false);
+  });
+
+  it("treats stop persistence failures as best-effort cleanup", async () => {
+    const blockingPath = createStoragePath();
+    fs.writeFileSync(blockingPath, "blocking file", "utf8");
+    const deduper = await createMatrixInboundEventDeduper({
+      auth: auth as never,
+      storagePath: path.join(blockingPath, "nested", "inbound-dedupe.json"),
+    });
+
+    expect(deduper.claimEvent({ roomId: "!room:example.org", eventId: "$persist-fail" })).toBe(
+      true,
+    );
+    await deduper.commitEvent({
+      roomId: "!room:example.org",
+      eventId: "$persist-fail",
+    });
+
+    await expect(deduper.stop()).resolves.toBeUndefined();
+  });
 });

@@ -720,12 +720,36 @@ describe("matrix monitor handler pairing account scope", () => {
               dispatcher: {},
               replyOptions: {},
               markDispatchIdle: () => {},
+              markRunComplete: () => {},
             }),
             resolveHumanDelayConfig: () => undefined,
             dispatchReplyFromConfig: async () => ({
               queuedFinal: true,
               counts: { final: 1, block: 0, tool: 0 },
             }),
+            withReplyDispatcher: async <T>({
+              dispatcher,
+              run,
+              onSettled,
+            }: {
+              dispatcher: {
+                markComplete?: () => void;
+                waitForIdle?: () => Promise<void>;
+              };
+              run: () => Promise<T>;
+              onSettled?: () => void | Promise<void>;
+            }) => {
+              try {
+                return await run();
+              } finally {
+                dispatcher.markComplete?.();
+                try {
+                  await dispatcher.waitForIdle?.();
+                } finally {
+                  await onSettled?.();
+                }
+              }
+            },
           },
           reactions: {
             shouldAckReaction: () => false,
@@ -1022,7 +1046,7 @@ describe("matrix monitor handler durable inbound dedupe", () => {
     expect(inboundDeduper.releaseEvent).not.toHaveBeenCalled();
   });
 
-  it("commits inbound events before reply side effects", async () => {
+  it("commits inbound events only after queued replies finish delivering", async () => {
     const callOrder: string[] = [];
     const inboundDeduper = {
       claimEvent: vi.fn(() => {
@@ -1050,6 +1074,23 @@ describe("matrix monitor handler durable inbound dedupe", () => {
       inboundDeduper,
       recordInboundSession,
       dispatchReplyFromConfig,
+      createReplyDispatcherWithTyping: () => ({
+        dispatcher: {
+          markComplete: () => {
+            callOrder.push("mark-complete");
+          },
+          waitForIdle: async () => {
+            callOrder.push("wait-for-idle");
+          },
+        },
+        replyOptions: {},
+        markDispatchIdle: () => {
+          callOrder.push("dispatch-idle");
+        },
+        markRunComplete: () => {
+          callOrder.push("run-complete");
+        },
+      }),
     });
 
     await handler(
@@ -1060,7 +1101,16 @@ describe("matrix monitor handler durable inbound dedupe", () => {
       }),
     );
 
-    expect(callOrder).toEqual(["claim", "record", "dispatch", "commit"]);
+    expect(callOrder).toEqual([
+      "claim",
+      "record",
+      "dispatch",
+      "run-complete",
+      "mark-complete",
+      "wait-for-idle",
+      "dispatch-idle",
+      "commit",
+    ]);
     expect(inboundDeduper.releaseEvent).not.toHaveBeenCalled();
   });
 

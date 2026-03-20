@@ -23,7 +23,7 @@ type StoredMatrixInboundDedupeState = {
 
 export type MatrixInboundEventDeduper = {
   claimEvent: (params: { roomId: string; eventId: string }) => boolean;
-  commitEvent: (params: { roomId: string; eventId: string; eventTs?: number }) => Promise<void>;
+  commitEvent: (params: { roomId: string; eventId: string }) => Promise<void>;
   releaseEvent: (params: { roomId: string; eventId: string }) => void;
   flush: () => Promise<void>;
   stop: () => Promise<void>;
@@ -252,13 +252,13 @@ export async function createMatrixInboundEventDeduper(params: {
       pending.add(key);
       return true;
     },
-    commitEvent: async ({ roomId, eventId, eventTs }) => {
+    commitEvent: async ({ roomId, eventId }) => {
       const key = buildEventKey({ roomId, eventId });
       if (!key) {
         return;
       }
       pending.delete(key);
-      const ts = normalizeTimestamp(eventTs) ?? nowMs();
+      const ts = nowMs();
       seen.delete(key);
       seen.set(key, ts);
       pruneSeenEvents({ seen, ttlMs, maxEntries, nowMs: nowMs() });
@@ -273,7 +273,15 @@ export async function createMatrixInboundEventDeduper(params: {
     },
     flush,
     stop: async () => {
-      await flush();
+      try {
+        await flush();
+      } catch (err) {
+        LogService.warn(
+          "MatrixInboundDedupe",
+          "Failed to flush Matrix inbound dedupe store during stop():",
+          err,
+        );
+      }
     },
   };
 }

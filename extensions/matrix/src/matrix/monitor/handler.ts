@@ -30,6 +30,7 @@ import {
 } from "../send.js";
 import { resolveMatrixMonitorAccessState } from "./access-state.js";
 import { resolveMatrixAckReactionConfig } from "./ack-config.js";
+import type { MatrixInboundEventDeduper } from "./inbound-dedupe.js";
 import { resolveMatrixLocation, type MatrixLocationPayload } from "./location.js";
 import { downloadMatrixMedia } from "./media.js";
 import { resolveMentions } from "./mentions.js";
@@ -72,11 +73,7 @@ export type MatrixMonitorHandlerParams = {
   startupMs: number;
   startupGraceMs: number;
   dropPreStartupMessages: boolean;
-  inboundDeduper?: {
-    claimEvent: (params: { roomId: string; eventId: string }) => boolean;
-    commitEvent: (params: { roomId: string; eventId: string; eventTs?: number }) => Promise<void>;
-    releaseEvent: (params: { roomId: string; eventId: string }) => void;
-  };
+  inboundDeduper?: Pick<MatrixInboundEventDeduper, "claimEvent" | "commitEvent" | "releaseEvent">;
   directTracker: {
     isDirectMessage: (params: {
       roomId: string;
@@ -268,11 +265,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         if (!claimedInboundEvent || !inboundDeduper || !eventId) {
           return;
         }
-        await inboundDeduper.commitEvent({
-          roomId,
-          eventId,
-          eventTs: eventTs ?? undefined,
-        });
+        await inboundDeduper.commitEvent({ roomId, eventId });
         claimedInboundEvent = false;
       };
       if (dropPreStartupMessages) {
@@ -871,7 +864,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           });
         },
       });
-      const { dispatcher, replyOptions, markDispatchIdle } =
+      const { dispatcher, replyOptions, markDispatchIdle, markRunComplete } =
         core.channel.reply.createReplyDispatcherWithTyping({
           ...prefixOptions,
           humanDelay: core.channel.reply.resolveHumanDelayConfig(cfg, route.agentId),
@@ -897,17 +890,28 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           onIdle: typingCallbacks.onIdle,
         });
 
-      const { queuedFinal, counts } = await core.channel.reply.dispatchReplyFromConfig({
-        ctx: ctxPayload,
-        cfg,
+      const { queuedFinal, counts } = await core.channel.reply.withReplyDispatcher({
         dispatcher,
-        replyOptions: {
-          ...replyOptions,
-          skillFilter: roomConfig?.skills,
-          onModelSelected,
+        onSettled: () => {
+          markDispatchIdle();
+        },
+        run: async () => {
+          try {
+            return await core.channel.reply.dispatchReplyFromConfig({
+              ctx: ctxPayload,
+              cfg,
+              dispatcher,
+              replyOptions: {
+                ...replyOptions,
+                skillFilter: roomConfig?.skills,
+                onModelSelected,
+              },
+            });
+          } finally {
+            markRunComplete();
+          }
         },
       });
-      markDispatchIdle();
       if (!queuedFinal) {
         await commitInboundEventIfClaimed();
         return;

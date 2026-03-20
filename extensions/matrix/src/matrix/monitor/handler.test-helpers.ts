@@ -56,12 +56,21 @@ type MatrixHandlerTestHarnessOptions = {
     dispatcher: Record<string, unknown>;
     replyOptions: Record<string, unknown>;
     markDispatchIdle: () => void;
+    markRunComplete: () => void;
   };
   resolveHumanDelayConfig?: () => undefined;
   dispatchReplyFromConfig?: () => Promise<{
     queuedFinal: boolean;
     counts: { final: number; block: number; tool: number };
   }>;
+  withReplyDispatcher?: <T>(params: {
+    dispatcher: {
+      markComplete?: () => void;
+      waitForIdle?: () => Promise<void>;
+    };
+    run: () => Promise<T>;
+    onSettled?: () => void | Promise<void>;
+  }) => Promise<T>;
   inboundDeduper?: MatrixMonitorHandlerParams["inboundDeduper"];
   shouldAckReaction?: () => boolean;
   enqueueSystemEvent?: (...args: unknown[]) => void;
@@ -139,9 +148,32 @@ export function createMatrixHandlerTestHarness(
               dispatcher: {},
               replyOptions: {},
               markDispatchIdle: () => {},
+              markRunComplete: () => {},
             })),
           resolveHumanDelayConfig: options.resolveHumanDelayConfig ?? (() => undefined),
           dispatchReplyFromConfig,
+          withReplyDispatcher:
+            options.withReplyDispatcher ??
+            (async <T>(params: {
+              dispatcher: {
+                markComplete?: () => void;
+                waitForIdle?: () => Promise<void>;
+              };
+              run: () => Promise<T>;
+              onSettled?: () => void | Promise<void>;
+            }) => {
+              const { dispatcher, run, onSettled } = params;
+              try {
+                return await run();
+              } finally {
+                dispatcher.markComplete?.();
+                try {
+                  await dispatcher.waitForIdle?.();
+                } finally {
+                  await onSettled?.();
+                }
+              }
+            }),
         },
         reactions: {
           shouldAckReaction: options.shouldAckReaction ?? (() => false),
