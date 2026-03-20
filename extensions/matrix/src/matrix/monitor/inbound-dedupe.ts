@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { readJsonFileWithFallback, writeJsonFileAtomically } from "../../runtime-api.js";
 import { resolveMatrixStoragePaths } from "../client/storage.js";
@@ -197,7 +196,6 @@ export async function createMatrixInboundEventDeduper(params: {
     });
     try {
       await persistLock(async () => {
-        await fs.mkdir(path.dirname(storagePath), { recursive: true });
         await writeJsonFileAtomically(storagePath, payload);
       });
     } catch (err) {

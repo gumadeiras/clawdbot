@@ -35,6 +35,7 @@ const hoisted = vi.hoisted(() => {
     createMatrixRoomMessageHandler,
     inboundDeduper,
     logger,
+    registeredOnRoomMessage: null as null | ((roomId: string, event: unknown) => Promise<void>),
     releaseSharedClientInstance,
     resolveTextChunkLimit,
     setActiveMatrixClient,
@@ -189,9 +190,12 @@ vi.mock("./direct.js", () => ({
 }));
 
 vi.mock("./events.js", () => ({
-  registerMatrixMonitorEvents: vi.fn(() => {
-    hoisted.callOrder.push("register-events");
-  }),
+  registerMatrixMonitorEvents: vi.fn(
+    (params: { onRoomMessage: (roomId: string, event: unknown) => Promise<void> }) => {
+      hoisted.callOrder.push("register-events");
+      hoisted.registeredOnRoomMessage = params.onRoomMessage;
+    },
+  ),
 }));
 
 vi.mock("./handler.js", () => ({
@@ -226,6 +230,7 @@ describe("monitorMatrixProvider", () => {
     hoisted.state.startClientError = null;
     hoisted.resolveTextChunkLimit.mockReset().mockReturnValue(4000);
     hoisted.releaseSharedClientInstance.mockReset().mockResolvedValue(true);
+    hoisted.registeredOnRoomMessage = null;
     hoisted.setActiveMatrixClient.mockReset();
     hoisted.stopThreadBindingManager.mockReset();
     hoisted.client.hasPersistedSyncState.mockReset().mockReturnValue(false);
@@ -293,6 +298,61 @@ describe("monitorMatrixProvider", () => {
       expect.objectContaining({
         dropPreStartupMessages: false,
       }),
+    );
+  });
+
+  it("waits for in-flight room handlers before flushing dedupe on shutdown", async () => {
+    const { monitorMatrixProvider } = await import("./index.js");
+    const abortController = new AbortController();
+    let resolveHandler: (() => void) | null = null;
+
+    hoisted.createMatrixRoomMessageHandler.mockReturnValue(
+      vi.fn(() => {
+        hoisted.callOrder.push("handler-start");
+        return new Promise<void>((resolve) => {
+          resolveHandler = () => {
+            hoisted.callOrder.push("handler-done");
+            resolve();
+          };
+        });
+      }),
+    );
+    hoisted.releaseSharedClientInstance.mockImplementation(async () => {
+      hoisted.callOrder.push("release-client");
+      return true;
+    });
+    hoisted.inboundDeduper.stop.mockImplementation(async () => {
+      hoisted.callOrder.push("stop-deduper");
+    });
+
+    const monitorPromise = monitorMatrixProvider({ abortSignal: abortController.signal });
+    await vi.waitFor(() => {
+      expect(hoisted.callOrder).toContain("start-client");
+    });
+    const onRoomMessage = hoisted.registeredOnRoomMessage;
+    if (!onRoomMessage) {
+      throw new Error("expected room message handler to be registered");
+    }
+
+    const roomMessagePromise = onRoomMessage("!room:example.org", { event_id: "$event" });
+    abortController.abort();
+    await vi.waitFor(() => {
+      expect(hoisted.callOrder).toContain("release-client");
+    });
+    expect(hoisted.callOrder).not.toContain("stop-deduper");
+
+    if (resolveHandler === null) {
+      throw new Error("expected in-flight handler to be pending");
+    }
+    (resolveHandler as () => void)();
+    await roomMessagePromise;
+    await monitorPromise;
+
+    expect(hoisted.callOrder.indexOf("release-client")).toBeLessThan(
+      hoisted.callOrder.indexOf("handler-done"),
+    );
+    expect(hoisted.callOrder.indexOf("handler-done")).toBeLessThan(
+      hoisted.callOrder.indexOf("stop-deduper"),
     );
   });
 });
