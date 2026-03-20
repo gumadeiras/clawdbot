@@ -365,12 +365,18 @@ export class MatrixClient {
     await this.startSyncSession({ bootstrapCrypto: false });
   }
 
-  stop(): void {
+  stopSyncWithoutPersist(): void {
     if (this.idbPersistTimer) {
       clearInterval(this.idbPersistTimer);
       this.idbPersistTimer = null;
     }
     this.decryptBridge.stop();
+    this.client.stopClient();
+    this.started = false;
+  }
+
+  stop(): void {
+    this.stopSyncWithoutPersist();
     // Final persist on shutdown
     this.syncStore?.markCleanShutdown();
     this.stopPersistPromise = Promise.all([
@@ -380,8 +386,6 @@ export class MatrixClient {
       }).catch(noop),
       this.syncStore?.flush().catch(noop),
     ]).then(() => undefined);
-    this.client.stopClient();
-    this.started = false;
   }
 
   async stopAndPersist(): Promise<void> {

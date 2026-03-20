@@ -154,9 +154,10 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     cleanedUp = true;
     try {
       threadBindingManager?.stop();
-      await releaseSharedClientInstance(client, "persist");
+      client.stopSyncWithoutPersist();
       await waitForInFlightRoomMessages();
       await inboundDeduper.stop();
+      await releaseSharedClientInstance(client, "persist");
     } finally {
       setActiveMatrixClient(null, auth.accountId);
     }

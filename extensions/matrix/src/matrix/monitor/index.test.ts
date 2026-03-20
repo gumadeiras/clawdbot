@@ -15,6 +15,7 @@ const hoisted = vi.hoisted(() => {
   const client = {
     id: "matrix-client",
     hasPersistedSyncState: vi.fn(() => false),
+    stopSyncWithoutPersist: vi.fn(),
   };
   const createMatrixRoomMessageHandler = vi.fn(() => vi.fn());
   const resolveTextChunkLimit = vi.fn<
@@ -234,6 +235,7 @@ describe("monitorMatrixProvider", () => {
     hoisted.setActiveMatrixClient.mockReset();
     hoisted.stopThreadBindingManager.mockReset();
     hoisted.client.hasPersistedSyncState.mockReset().mockReturnValue(false);
+    hoisted.client.stopSyncWithoutPersist.mockReset();
     hoisted.inboundDeduper.claimEvent.mockReset().mockReturnValue(true);
     hoisted.inboundDeduper.commitEvent.mockReset().mockResolvedValue(undefined);
     hoisted.inboundDeduper.releaseEvent.mockReset();
@@ -301,7 +303,7 @@ describe("monitorMatrixProvider", () => {
     );
   });
 
-  it("waits for in-flight room handlers before flushing dedupe on shutdown", async () => {
+  it("stops sync before waiting for in-flight handlers, then flushes dedupe before persisting", async () => {
     const { monitorMatrixProvider } = await import("./index.js");
     const abortController = new AbortController();
     let resolveHandler: (() => void) | null = null;
@@ -317,6 +319,9 @@ describe("monitorMatrixProvider", () => {
         });
       }),
     );
+    hoisted.client.stopSyncWithoutPersist.mockImplementation(() => {
+      hoisted.callOrder.push("pause-client");
+    });
     hoisted.releaseSharedClientInstance.mockImplementation(async () => {
       hoisted.callOrder.push("release-client");
       return true;
@@ -337,7 +342,7 @@ describe("monitorMatrixProvider", () => {
     const roomMessagePromise = onRoomMessage("!room:example.org", { event_id: "$event" });
     abortController.abort();
     await vi.waitFor(() => {
-      expect(hoisted.callOrder).toContain("release-client");
+      expect(hoisted.callOrder).toContain("pause-client");
     });
     expect(hoisted.callOrder).not.toContain("stop-deduper");
 
@@ -348,11 +353,14 @@ describe("monitorMatrixProvider", () => {
     await roomMessagePromise;
     await monitorPromise;
 
-    expect(hoisted.callOrder.indexOf("release-client")).toBeLessThan(
+    expect(hoisted.callOrder.indexOf("pause-client")).toBeLessThan(
       hoisted.callOrder.indexOf("handler-done"),
     );
     expect(hoisted.callOrder.indexOf("handler-done")).toBeLessThan(
       hoisted.callOrder.indexOf("stop-deduper"),
+    );
+    expect(hoisted.callOrder.indexOf("stop-deduper")).toBeLessThan(
+      hoisted.callOrder.indexOf("release-client"),
     );
   });
 });
