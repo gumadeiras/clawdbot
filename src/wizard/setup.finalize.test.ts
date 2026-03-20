@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createWizardPrompter as buildWizardPrompter } from "../../test/helpers/wizard-prompter.js";
+import type { OpenClawConfig } from "../config/config.js";
+import type { PluginWebSearchProviderEntry } from "../plugins/types.js";
 import type { RuntimeEnv } from "../runtime.js";
 
 const runTui = vi.hoisted(() => vi.fn(async () => {}));
@@ -34,10 +36,18 @@ const readSystemdUserLingerStatus = vi.hoisted(() =>
 const resolveSetupSecretInputString = vi.hoisted(() =>
   vi.fn<() => Promise<string | undefined>>(async () => undefined),
 );
-const resolveExistingKey = vi.hoisted(() => vi.fn(() => undefined));
-const hasExistingKey = vi.hoisted(() => vi.fn(() => false));
-const hasKeyInEnv = vi.hoisted(() => vi.fn(() => false));
-const listWebSearchProviders = vi.hoisted(() => vi.fn(() => []));
+const resolveExistingKey = vi.hoisted(() =>
+  vi.fn<(config: OpenClawConfig, provider: string) => string | undefined>(() => undefined),
+);
+const hasExistingKey = vi.hoisted(() =>
+  vi.fn<(config: OpenClawConfig, provider: string) => boolean>(() => false),
+);
+const hasKeyInEnv = vi.hoisted(() =>
+  vi.fn<(entry: Pick<PluginWebSearchProviderEntry, "envVars">) => boolean>(() => false),
+);
+const listWebSearchProviders = vi.hoisted(() =>
+  vi.fn<(params?: { config?: OpenClawConfig }) => PluginWebSearchProviderEntry[]>(() => []),
+);
 
 vi.mock("../commands/onboard-helpers.js", () => ({
   detectBrowserOpenSupport: vi.fn(async () => ({ ok: false })),

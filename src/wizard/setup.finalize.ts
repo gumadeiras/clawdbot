@@ -486,9 +486,8 @@ export async function finalizeSetupWizard(
   const webSearchEnabled = nextConfig.tools?.web?.search?.enabled;
   const runtimeSearchProviders = listWebSearchProviders({ config: nextConfig });
   if (webSearchProvider) {
-    const { resolveExistingKey, hasExistingKey, hasKeyInEnv } = await import(
-      "../commands/onboard-search.js"
-    );
+    const { resolveExistingKey, hasExistingKey, hasKeyInEnv } =
+      await import("../commands/onboard-search.js");
     const entry = runtimeSearchProviders.find((e) => e.id === webSearchProvider);
     const label = entry?.label ?? webSearchProvider;
     const storedKey = entry ? resolveExistingKey(nextConfig, webSearchProvider) : undefined;

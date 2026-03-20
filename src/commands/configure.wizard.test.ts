@@ -398,7 +398,9 @@ describe("runConfigureWizard", () => {
     ).resolves.toBeUndefined();
 
     expect(mocks.note).toHaveBeenCalledWith(
-      expect.stringContaining("No web search providers are currently available under this plugin policy."),
+      expect.stringContaining(
+        "No web search providers are currently available under this plugin policy.",
+      ),
       "Web search",
     );
     expect(mocks.writeConfigFile).toHaveBeenCalledWith(
